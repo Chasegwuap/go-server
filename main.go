@@ -1,59 +1,61 @@
+// Example code for Chapter 4.2 from "Build Web Application with Golang"
+// Purpose: Shows how to perform server-side validation of user input from a form.
+// Also shows to use multiple template files with predefined template names.
+// Run `go run main.go` and then access http://localhost:9090
 package main
 
 import (
-	"crypto/md5"
-	"fmt"
 	"html/template"
-	"io"
 	"log"
 	"net/http"
-	"strconv"
-	"strings"
-	"time"
+
+	"github.com/Chasegwuap/go-server/validator"
 )
 
-func sayhelloName(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()       // parse arguments, you have to call this by yourself
-	fmt.Println(r.Form) // print form information in server side
-	fmt.Println("path", r.URL.Path)
-	fmt.Println("scheme", r.URL.Scheme)
-	fmt.Println(r.Form["url_long"])
-	for k, v := range r.Form {
-		fmt.Println("key:", k)
-		fmt.Println("val:", strings.Join(v, ""))
-	}
-	fmt.Fprintf(w, "Hello astaxie , Hello Josh welcome to the new web server!") // send data to client side
+const (
+	PORT     = "9090"
+	HOST_URL = "http://localhost:" + PORT
+)
+
+var t *template.Template
+
+type Links struct {
+	BadLinks [][2]string
 }
 
-func login(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("method:", r.Method) // get request method
-	if r.Method == "GET" {
-		crutime := time.Now().Unix()
-		h := md5.New()
-		io.WriteString(h, strconv.FormatInt(crutime, 10))
-		token := fmt.Sprintf("%x", h.Sum(nil))
+// invalid links to display for testing.
+var links Links
 
-		t, _ := template.ParseFiles("login.gtpl")
-		t.Execute(w, token)
-	} else {
-		// log in request
-		r.ParseForm()
-		token := r.Form.Get("token")
-		if token != "" {
-			// check token validity
-		} else {
-			// give error if no token
-		}
-		fmt.Println("username length:", len(r.Form["username"][0]))
-		fmt.Println("username:", template.HTMLEscapeString(r.Form.Get("username"))) // print in server side
-		fmt.Println("password:", template.HTMLEscapeString(r.Form.Get("password")))
-		template.HTMLEscape(w, []byte(r.Form.Get("username"))) // respond to client
+func index(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, HOST_URL+"/profile", http.StatusTemporaryRedirect)
+}
+func profileHandler(w http.ResponseWriter, r *http.Request) {
+	t.ExecuteTemplate(w, "profile", links)
+}
+func checkProfile(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	p := validator.ProfilePage{
+		Form: &r.Form,
 	}
+	t.ExecuteTemplate(w, "submission", p.GetErrors())
+}
+
+// This function is called before main()
+func init() {
+	// Note: we can reference the loaded templates by their defined name inside the template files.
+	t = template.Must(template.ParseFiles("profile.gtpl", "submission.gtpl"))
+
+	list := make([][2]string, 2)
+	list[0] = [2]string{HOST_URL + "/checkprofile", "No data"}
+	list[1] = [2]string{HOST_URL + "/checkprofile?age=1&gender=guy&shirtsize=big", "Invalid options"}
+	links = Links{list}
 }
 func main() {
-	http.HandleFunc("/", sayhelloName)
-	http.HandleFunc("/login", login)         // set router
-	err := http.ListenAndServe(":9090", nil) // set listen port
+	http.HandleFunc("/", index)
+	http.HandleFunc("/profile", profileHandler)
+	http.HandleFunc("/checkprofile", checkProfile)
+
+	err := http.ListenAndServe(":"+PORT, nil) // setting listening port
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
